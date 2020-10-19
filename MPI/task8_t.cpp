@@ -3,7 +3,7 @@
 #include <random>
 
 #define M 6
-#define N 6
+#define N 5
 
 using namespace std;
 
@@ -97,9 +97,23 @@ void fillFinalMatrix(int** finalMatrix, int* finalArr, int m, int n) {
 }
 
 
-int main(int argc, char* argv[]) {
+void fillTMatirix(int** Tmat, int** part, int dest, int block)  {
 
-    int tagA = 100;
+    int s = (dest - 1) * block;
+
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < block; j++) {
+            Tmat[i][j + s] = part[i][j];
+        }
+    }
+
+//    for (int j = 0; j < block; j++) {
+//        Tmat[(i - 1) * block + j] = buffArr[j];
+//    }
+}
+
+
+int main(int argc, char* argv[]) {
 
     int processId, processCount;
 
@@ -109,32 +123,23 @@ int main(int argc, char* argv[]) {
 
     if (processId == 0) {
 
-        // init matrix
         int** A = alloc_2d_int(M, N);
-        int** B = alloc_2d_int(M, N);
         fill(A, M, N);
-        fill(B, M, N);
+
+        int** At = alloc_2d_int(N, M);
 
         printMatrix(A, M, N);
-        printMatrix(B, M, N);
 
-        int matrixSize = M * N;
+        int blockSize = M / (processCount - 1);
 
-        int blockSize = matrixSize / (processCount - 1);
-
-        if ((float) matrixSize / (processCount - 1) - matrixSize / (processCount - 1) > 0) {
+        if ((float) M / (processCount - 1) - M / (processCount - 1) > 0) {
             blockSize += 1;
         }
 
-        printf("block size = %i\n", blockSize);
+        printf("block size = %i, process count = %i\n", blockSize, processCount);
 
-        int reminder_size = matrixSize;
-
-        int* finalArr = new int[matrixSize];
-        int** finalMatrix = alloc_2d_int(M, N);
-
-
-        int c = 0; int i = 0; int j = 0;
+        int reminder_size = M;
+        int c = 0;
 
         for (int dest = 1; dest < processCount; dest++) {
 
@@ -146,75 +151,67 @@ int main(int argc, char* argv[]) {
 
             reminder_size -= blockSize;
 
-            printf("size arr = %i\n", size_arr);
+            int** sendedArr = alloc_2d_int(size_arr, N);
 
-            auto a = &(A[0][0]);
-            auto b = &(B[0][0]);
+            for (int i = 0; i < size_arr; i++) {
+                for (int j = 0; j < N; j++) {
+                    sendedArr[i][j] = A[blockSize * (dest - 1) + i][j];
+                }
+            }
 
-            MPI_Send(&a[(dest - 1) * size_arr], size_arr, MPI_INT, dest, dest + 100, MPI_COMM_WORLD);
-            MPI_Send(&b[(dest - 1) * size_arr], size_arr, MPI_INT, dest, dest + 200, MPI_COMM_WORLD);
+//            printMatrix(sendedArr, size_arr, N);
+
+            MPI_Send(&(sendedArr[0][0]), size_arr * N, MPI_INT, dest, dest, MPI_COMM_WORLD);
 
             int count;
             MPI_Status status;
-            MPI_Probe(dest, dest + 1000, MPI_COMM_WORLD, &status);
+            MPI_Probe(dest, 100 + dest, MPI_COMM_WORLD, &status);
             MPI_Get_count(&status, MPI_INT, &count);
 
-            int* recvC = new int[count];
+            int** Tpart = alloc_2d_int(N, count / N);
 
-            MPI_Recv(recvC, count, MPI_INT, dest, dest + 1000, MPI_COMM_WORLD, &status);
+            MPI_Recv(&(Tpart[0][0]), count, MPI_INT, dest, 100 + dest, MPI_COMM_WORLD, &status);
 
-//            printArr(recvC, count, "Final arr " + to_string(dest));
+//            printMatrix(Tpart, N, count / N);
 
-            fillFinalArr(finalArr, recvC, blockSize, dest);
+            fillTMatirix(At, Tpart, dest, count / N);
 
         }
 
-        fillFinalMatrix(finalMatrix, finalArr, N, M);
-
-//        printArr(finalArr, M*N, "final");
-
-        printMatrix(finalMatrix, M, N);
-
-//        printMatrix(finalArr, M, N);
-
-//        MPI_Send(&(A[0][0]), M * N, MPI_INT, 1, tagA, MPI_COMM_WORLD);
+        printMatrix(At, N, M);
 
     }
 
     if (processId != 0) {
+
         int count;
         MPI_Status status;
-        MPI_Probe(0, processId + 100, MPI_COMM_WORLD, &status);
+        MPI_Probe(0, processId, MPI_COMM_WORLD, &status);
         MPI_Get_count(&status, MPI_INT, &count);
 
-//        printf("count = %i\n", count);
+        int arr_size = count / N;
 
-//        int** A = alloc_2d_int(M, N);
-//
-//        MPI_Recv(&(A[0][0]), M * N, MPI_INT, 0, tagA, MPI_COMM_WORLD, &status);
-//
-//        printMatrix(A, M, N);
+        printf("count = %i\n", count);
 
-        int* partA = new int[count];
-        int* partB = new int[count];
+        int** buffA = alloc_2d_int(arr_size, N);
+        MPI_Recv(&(buffA[0][0]), count, MPI_INT, 0, processId, MPI_COMM_WORLD, &status);
 
-        int* partC = new int[count];
+//        printMatrix(buffA, arr_size, N);
 
-        MPI_Recv(partA, count, MPI_INT, 0, processId + 100, MPI_COMM_WORLD, &status);
-        MPI_Recv(partB, count, MPI_INT, 0, processId + 200, MPI_COMM_WORLD, &status);
+        int** buffAT = alloc_2d_int(N, arr_size);
 
-//        printArr(partA, count, "Part of A on process = " + to_string(processId));
-//        printArr(partB, count, "Part of B on process = " + to_string(processId));
-
-        for (int i = 0; i < count; i++) {
-            partC[i] = partA[i] * partB[i];
+        for (int i = 0; i < arr_size; i++) {
+            for (int j = 0; j < N; j++) {
+                buffAT[j][i] = buffA[i][j];
+            }
         }
 
-//        printArr(partC, count, "Part of C on process = " + to_string(processId));
+//        printMatrix(buffAT, N, arr_size);
 
-        MPI_Send(partC, count, MPI_INT, 0, 1000 + processId, MPI_COMM_WORLD);
+        MPI_Send(&(buffAT[0][0]), arr_size * N, MPI_INT, 0, 100 + processId, MPI_COMM_WORLD);
 
     }
+
 
     MPI_Finalize();
 
