@@ -6,6 +6,11 @@
 
 using namespace std;
 
+struct MyType {
+    int rows[2][8];
+};
+
+
 void printMatrix(int* matrix, const int rows, const int columns, string name) {
 
     string out = "Matrix " + name + "\n-----------------------\n";
@@ -33,6 +38,11 @@ void printMatrix(int* matrix, const int rows, const int columns, string name) {
 int main(int argc, char* argv[]) {
 
     int processId, size;
+    struct MyType myType;
+    MPI_Datatype newType;
+    MPI_Datatype type[1] = {MPI_INT};
+    int blockLen[1] = {16};
+    MPI_Aint disp[1] = {0};
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -41,39 +51,34 @@ int main(int argc, char* argv[]) {
     if (processId == 0) {
 
         int a[8][8]; int c = 0;
-
         // заполняем матрицу числами от 0 до 8 * 8 - 1
         for (int i = 0; i < 8; i++) {
             for (int j = 0; j < 8; j++) {
                 a[i][j] = c++;
             }
         }
-
         // печатаем исходную матрицу
         printMatrix(*a, 8, 8, "original");
 
-        MPI_Datatype newType;
-        MPI_Type_vector(4, 8, 16, MPI_INT, &newType);
-        MPI_Type_commit(&newType);
-
-        // отправляем чётные строки
-        MPI_Send(&a[0][0], 1, newType, 1, 0, MPI_COMM_WORLD);
-        // отправляем нечётные строки
-        MPI_Send(&a[1][0], 1, newType, 1, 10, MPI_COMM_WORLD);
-
+        for (int dest = 1; dest < size; dest++) {
+            for (int j = 0; j < 8; j++) {
+                myType.rows[0][j] = a[dest - 1][j];
+                myType.rows[1][j] = a[dest + 3][j];
+            }
+            MPI_Type_create_struct(1, blockLen, disp, type, &newType);
+            MPI_Type_commit(&newType);
+            MPI_Send(&myType, 1, newType, dest, dest, MPI_COMM_WORLD);
+        }
     }
 
     else {
-        int b[4][8];
-        int c[4][8];
-
+        int d[2][8];
         // принимаем матрицы
-        MPI_Recv(&b, 32, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        MPI_Recv(&c, 32, MPI_INT, 0, 10, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(&d, 16, MPI_INT, 0, processId, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-        // печатаем их
-        printMatrix(*b, 4, 8, "b");
-        printMatrix(*c, 4, 8, "c");
+        if (processId == 4) {
+            printMatrix(*d, 2, 8, "d");
+        }
 
     }
 
