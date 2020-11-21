@@ -133,7 +133,6 @@ int main(int argc, char* argv[]) {
         int* finalArr = new int[matrixSize];
         int** finalMatrix = alloc_2d_int(M, N);
 
-
         int c = 0; int i = 0; int j = 0;
 
         for (int dest = 1; dest < processCount; dest++) {
